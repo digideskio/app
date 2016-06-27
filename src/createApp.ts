@@ -21,8 +21,9 @@ import realizeCustomElements, {
 	normalizeName,
 	RealizationHandle
 } from './_realizeCustomElements';
+import RegistryProvider from './_RegistryProvider';
 
-export { ToAbsMid };
+export { RegistryProvider, ToAbsMid };
 
 /**
  * Any kind of action.
@@ -370,6 +371,11 @@ export interface AppMixin {
 	 */
 	realize(root: Element): Promise<RealizationHandle>;
 
+	/**
+	 * Provides access to read-only registries for actions, stores and widgets.
+	 */
+	registryProvider: RegistryProvider;
+
 	_registry: CombinedRegistry;
 	_resolveMid: ResolveMid;
 }
@@ -493,9 +499,15 @@ const createApp = compose({
 				// Always call the factory in a future turn. This harmonizes behavior regardless of whether the
 				// factory is registered through this method or loaded from a definition.
 
-				const options: { id: string, stateFrom?: StoreLike } = { id };
-				if (this.defaultStore) {
-					options.stateFrom = this.defaultStore;
+				const { registryProvider, defaultStore } = this;
+				interface Options {
+					id: string;
+					registryProvider: RegistryProvider;
+					stateFrom?: StoreLike;
+				}
+				const options: Options = { id, registryProvider };
+				if (defaultStore) {
+					options.stateFrom = defaultStore;
 				}
 				return factory(options);
 			});
@@ -559,7 +571,7 @@ const createApp = compose({
 	},
 
 	realize(root: Element) {
-		return realizeCustomElements(this._registry, this.defaultStore, root);
+		return realizeCustomElements(this._registry, this.registryProvider, this.defaultStore, root);
 	}
 })
 .mixin({
@@ -616,13 +628,21 @@ const createApp = compose({
 		};
 		Object.freeze(instance._registry);
 
+		instance._resolveMid = makeMidResolver(toAbsMid);
+
 		Object.defineProperty(instance, 'defaultStore', {
 			configurable: false,
 			enumerable: true,
 			value: defaultStore,
 			writable: false
 		});
-		instance._resolveMid = makeMidResolver(toAbsMid);
+
+		Object.defineProperty(instance, 'registryProvider', {
+			configurable: false,
+			enumerable: true,
+			value: new RegistryProvider(instance._registry),
+			writable: false
+		});
 
 		actions.set(instance, new IdentityRegistry<RegisteredFactory<ActionLike>>());
 		customElements.set(instance, new IdentityRegistry<RegisteredFactory<WidgetLike>>());
